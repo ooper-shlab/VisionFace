@@ -11,7 +11,8 @@ import UIKit
 import AVFoundation
 import CoreImage
 import ImageIO
-import Photos           //for iOS 9+
+import Photos
+import Vision
 
 //MARK:-
 
@@ -334,7 +335,11 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         if !detectFaces {
             DispatchQueue.main.async {
                 // clear out any squares currently displaying.
-                self.drawFaceBoxes(for: [], forVideoBox: .zero, orientation: .portrait)
+                #if USES_CIDETECTOR
+                    self.drawFaceBoxes(for: [CIFeature](), forVideoBox: .zero, orientation: .portrait)
+                #else
+                    self.drawFaceBoxes(for: [VNFaceObservation](), forVideoBox: .zero, orientation: .portrait)
+                #endif
             }
         }
     }
@@ -392,7 +397,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         let sublayers = previewLayer?.sublayers ?? []
         let sublayersCount = sublayers.count
         var currentSublayer = 0
-        var featuresCount = features.count, currentFeature = 0
+        let featuresCount = features.count
         
         CATransaction.begin()
         CATransaction.setValue(true, forKey: kCATransactionDisableActions)
@@ -478,18 +483,113 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
                 
                 break // leave the layer in its last known orientation//        }
             }
-            currentFeature += 1
         }
         
         CATransaction.commit()
     }
-    
-    func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        // got an image
-        let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)!
-        let attachments = CMCopyDictionaryOfAttachments(kCFAllocatorDefault, sampleBuffer, kCMAttachmentMode_ShouldPropagate) as! [String: Any]?
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer, options: attachments)
-        let curDeviceOrientation = UIDevice.current.orientation
+    private func drawFaceBoxes(for observations: [VNFaceObservation], forVideoBox clap: CGRect, orientation: UIDeviceOrientation) {
+        let sublayers = previewLayer?.sublayers ?? []
+        let featuresCount = observations.count
+        
+        CATransaction.begin()
+        CATransaction.setValue(true, forKey: kCATransactionDisableActions)
+        
+        // hide all the face layers
+        for layer in sublayers {
+            if layer.name == "FaceRectLayer" {
+                layer.isHidden = true
+            }
+        }
+        
+        if featuresCount == 0 || !detectFaces {
+            CATransaction.commit()
+            return // early bail.
+        }
+        
+        let parentFrameSize = previewView.frame.size;
+        let gravity = previewLayer?.videoGravity
+        let isMirrored = previewLayer?.connection?.isVideoMirrored ?? false
+        let previewBox = ViewController.videoPreviewBox(for: gravity!,
+                                                        frameSize: parentFrameSize,
+                                                        apertureSize: clap.size)
+        
+        for observation in observations {
+            // find the correct position for the square layer within the previewLayer
+            // the feature box originates in the bottom left of the video frame.
+            // (Bottom right if mirroring is turned on)
+            var faceRect = observation.boundingBox
+            print("###FaceRect:",faceRect)
+            // flip preview width and height
+            if isMirrored {
+                faceRect.origin.x = 1 - faceRect.origin.x - faceRect.size.width
+            }
+            faceRect.origin.y = 1 - faceRect.size.height - faceRect.origin.y
+            // scale coordinates so they fit in the preview box, which may be scaled
+            faceRect.size.width *= previewBox.width
+            faceRect.size.height *= previewBox.height
+            faceRect.origin.x = faceRect.origin.x * previewBox.width + previewBox.origin.x
+            faceRect.origin.y = previewBox.origin.y + faceRect.origin.y * previewBox.height
+            let points: [CGPoint] = [
+                CGPoint(x: faceRect.origin.x, y: faceRect.origin.y),
+                CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y),
+                CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y + faceRect.size.height),
+                CGPoint(x: faceRect.origin.x, y: faceRect.origin.y + faceRect.size.height),
+            ]
+
+            var featureLayer: CAShapeLayer? = nil
+            
+            let path = UIBezierPath()
+            path.move(to: points[0])
+            path.addLine(to: points[1])
+            path.addLine(to: points[2])
+            path.addLine(to: points[3])
+            path.close()
+            
+            // re-use an existing layer if possible
+            for currentSublayer in sublayers
+                where currentSublayer.name == "FaceRectLayer"
+            {
+                let currentLayer = currentSublayer as! CAShapeLayer
+                featureLayer = currentLayer
+                currentLayer.isHidden = false
+                break
+            }
+            
+            // create a new one if necessary
+            if featureLayer == nil {
+                let shapeLayer = CAShapeLayer()
+                shapeLayer.strokeColor = UIColor.red.cgColor
+                shapeLayer.lineWidth = 4.0
+                shapeLayer.fillColor = UIColor.clear.cgColor
+                shapeLayer.name = "FaceRectLayer"
+                featureLayer = shapeLayer
+                previewLayer?.addSublayer(featureLayer!)
+            }
+            featureLayer!.path = path.cgPath
+            featureLayer!.frame = previewView.frame
+//            featureLayer!.frame = faceRect
+            
+//            switch orientation {
+//            case .portrait:
+//                featureLayer!.setAffineTransform(CGAffineTransform(rotationAngle: DegreesToRadians(0.0)))
+//            case .portraitUpsideDown:
+//                featureLayer!.setAffineTransform(CGAffineTransform(rotationAngle: DegreesToRadians(180.0)))
+//            case .landscapeLeft:
+//                featureLayer!.setAffineTransform(CGAffineTransform(rotationAngle: DegreesToRadians(90.0)))
+//            case .landscapeRight:
+//                featureLayer!.setAffineTransform(CGAffineTransform(rotationAngle: DegreesToRadians(-90.0)))
+//            case .faceUp, .faceDown:
+//                break
+//            default:
+//
+//                break // leave the layer in its last known orientation//        }
+//            }
+        }
+        
+        CATransaction.commit()
+    }
+
+    private func exifOrientation(from curDeviceOrientation: UIDeviceOrientation) -> Int {
         var exifOrientation: Int = 0
         
         /* kCGImagePropertyOrientation values
@@ -530,6 +630,27 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         default:
             exifOrientation = PHOTOS_EXIF_0ROW_RIGHT_0COL_TOP
         }
+        return exifOrientation
+    }
+    private func cgImagePropertyOrientation(from deviceOrientation: UIDeviceOrientation) -> CGImagePropertyOrientation {
+        return CGImagePropertyOrientation(rawValue: UInt32(exifOrientation(from: deviceOrientation)))!
+    }
+    
+    func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        #if USES_CIDETECTOR
+            detectFacesWithCIDetector(for: captureOutput, sampleBuffer: sampleBuffer, from: connection)
+        #else
+            detectFacesWithVision(for: captureOutput, sampleBuffer: sampleBuffer, from: connection)
+        #endif
+    }
+    private func detectFacesWithCIDetector(for captureOutput: AVCaptureOutput, sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        // got an image
+        let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)!
+        let attachments = CMCopyDictionaryOfAttachments(kCFAllocatorDefault, sampleBuffer, kCMAttachmentMode_ShouldPropagate) as! [String: Any]?
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer, options: attachments)
+        
+        let curDeviceOrientation = UIDevice.current.orientation
+        let exifOrientation = self.exifOrientation(from: curDeviceOrientation)
         
         let imageOptions = [CIDetectorImageOrientation: exifOrientation]
         let features = faceDetector.features(in: ciImage, options: imageOptions)
@@ -544,7 +665,33 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             self.drawFaceBoxes(for: features, forVideoBox: clap, orientation: curDeviceOrientation)
         }
     }
-    
+    private func detectFacesWithVision(for captureOutput: AVCaptureOutput, sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        // got an image
+        let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)!
+        let curDeviceOrientation = UIDevice.current.orientation
+        let orientation = cgImagePropertyOrientation(from: curDeviceOrientation)
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
+        
+        let request = VNDetectFaceRectanglesRequest {request, error in
+            let observations = request.results as! [VNFaceObservation]
+            
+            // get the clean aperture
+            // the clean aperture is a rectangle that defines the portion of the encoded pixel dimensions
+            // that represents image data valid for display.
+            let fdesc = CMSampleBufferGetFormatDescription(sampleBuffer)!
+            let clap = CMVideoFormatDescriptionGetCleanAperture(fdesc, false /*originIsTopLeft == false*/)
+            
+            DispatchQueue.main.async {
+                self.drawFaceBoxes(for: observations, forVideoBox: clap, orientation: curDeviceOrientation)
+            }
+        }
+        do {
+            try handler.perform([request])
+        } catch {
+            print(error)
+        }
+    }
+
     deinit {
         self.teardownAVCapture()
     }
