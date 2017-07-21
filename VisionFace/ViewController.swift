@@ -2,7 +2,7 @@
 //  ViewController.swift
 //  VisionFace
 //
-//  Created by 開発 on 2017/7/10.
+//  Created by OOPer in cooperation with shlab.jp, 2017/7/10.
 //  Copyright © 2017 OOPer (NAGATA, Atsuyuki). All rights reserved.
 //
 
@@ -18,40 +18,8 @@ import Vision
 
 private func DegreesToRadians(_ degrees: CGFloat) -> CGFloat {return degrees * (.pi / 180)}
 
-// create a CGImage with provided pixel buffer, pixel buffer must be uncompressed kCVPixelFormatType_32ARGB or kCVPixelFormatType_32BGRA
-private func CreateCGImageFromCVPixelBuffer(_ pixelBuffer: CVPixelBuffer, _ imageOut: inout CGImage?) -> OSStatus {
-    let err = noErr
-    var bitmapInfo: CGBitmapInfo
-    
-    let sourcePixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer)
-    if kCVPixelFormatType_32ARGB == sourcePixelFormat {
-        bitmapInfo = CGBitmapInfo.byteOrder32Big.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue))
-    } else if kCVPixelFormatType_32BGRA == sourcePixelFormat {
-        bitmapInfo = CGBitmapInfo.byteOrder32Little.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue))
-    } else {
-        return -95014 // only uncompressed pixel formats
-    }
-    
-    let sourceRowBytes = CVPixelBufferGetBytesPerRow(pixelBuffer)
-    let width = CVPixelBufferGetWidth(pixelBuffer)
-    let height = CVPixelBufferGetHeight(pixelBuffer)
-    
-    CVPixelBufferLockBaseAddress(pixelBuffer, [])
-    let sourceBaseAddr = CVPixelBufferGetBaseAddress(pixelBuffer)!
-    
-    let colorspace = CGColorSpaceCreateDeviceRGB()
-    
-    let data = Data(bytes: sourceBaseAddr, count: sourceRowBytes * height)
-    let provider = CGDataProvider(data: data as CFData)!
-    let image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: sourceRowBytes, space: colorspace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: true, intent: CGColorRenderingIntent.defaultIntent)
-    CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
-    
-    imageOut = image
-    return err
-}
-
 // utility used by newSquareOverlayedImageForFeatures for
-func CreateCGBitmapContextForSize(_ size: CGSize) -> CGContext? {
+func CreateCGBitmapContext(for size: CGSize) -> CGContext? {
     
     let bitmapBytesPerRow = Int(size.width * 4)
     
@@ -214,7 +182,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
                                          frontFacing isFrontFacing: Bool) -> CGImage
     {
         let backgroundImageRect = CGRect(x: 0, y: 0, width: backgroundImage.width, height: backgroundImage.height)
-        let bitmapContext = CreateCGBitmapContextForSize(backgroundImageRect.size)
+        let bitmapContext = CreateCGBitmapContext(for: backgroundImageRect.size)
         bitmapContext?.clear(backgroundImageRect)
         bitmapContext?.draw(backgroundImage, in: backgroundImageRect)
         var rotationDegrees: CGFloat = 0.0
@@ -488,6 +456,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         CATransaction.commit()
     }
     private func drawFaceBoxes(for observations: [VNFaceObservation], forVideoBox clap: CGRect, orientation: UIDeviceOrientation) {
+        
         let sublayers = previewLayer?.sublayers ?? []
         let featuresCount = observations.count
         
@@ -513,79 +482,53 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
                                                         frameSize: parentFrameSize,
                                                         apertureSize: clap.size)
         
-        for observation in observations {
-            // find the correct position for the square layer within the previewLayer
-            // the feature box originates in the bottom left of the video frame.
-            // (Bottom right if mirroring is turned on)
-            var faceRect = observation.boundingBox
-            print("###FaceRect:",faceRect)
-            // flip preview width and height
-            if isMirrored {
-                faceRect.origin.x = 1 - faceRect.origin.x - faceRect.size.width
-            }
-            faceRect.origin.y = 1 - faceRect.size.height - faceRect.origin.y
-            // scale coordinates so they fit in the preview box, which may be scaled
-            faceRect.size.width *= previewBox.width
-            faceRect.size.height *= previewBox.height
-            faceRect.origin.x = faceRect.origin.x * previewBox.width + previewBox.origin.x
-            faceRect.origin.y = previewBox.origin.y + faceRect.origin.y * previewBox.height
-            let points: [CGPoint] = [
-                CGPoint(x: faceRect.origin.x, y: faceRect.origin.y),
-                CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y),
-                CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y + faceRect.size.height),
-                CGPoint(x: faceRect.origin.x, y: faceRect.origin.y + faceRect.size.height),
-            ]
+        //Transformation from normalized coordinate to previewBox
+        let flipHorizontal = isMirrored
+            ? CGAffineTransform(scaleX: -1, y: 1).translatedBy(x: -1, y: 0)
+            : CGAffineTransform.identity
+        let flipVertical = CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -1)
+        let scale = CGAffineTransform(scaleX: previewBox.width, y: previewBox.height)
+        let translate = CGAffineTransform(translationX: previewBox.origin.x, y: previewBox.origin.y)
+        let denormalizing = flipHorizontal
+            .concatenating(flipVertical)
+            .concatenating(scale)
+            .concatenating(translate)
 
-            var featureLayer: CAShapeLayer? = nil
-            
-            let path = UIBezierPath()
-            path.move(to: points[0])
-            path.addLine(to: points[1])
-            path.addLine(to: points[2])
-            path.addLine(to: points[3])
+        let path = UIBezierPath()
+        for observation in observations {
+            let faceRect = observation.boundingBox
+            path.move(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y))
+            path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y))
+            path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y + faceRect.size.height))
+            path.addLine(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y + faceRect.size.height))
             path.close()
-            
-            // re-use an existing layer if possible
-            for currentSublayer in sublayers
-                where currentSublayer.name == "FaceRectLayer"
-            {
-                let currentLayer = currentSublayer as! CAShapeLayer
-                featureLayer = currentLayer
-                currentLayer.isHidden = false
-                break
-            }
-            
-            // create a new one if necessary
-            if featureLayer == nil {
-                let shapeLayer = CAShapeLayer()
-                shapeLayer.strokeColor = UIColor.red.cgColor
-                shapeLayer.lineWidth = 4.0
-                shapeLayer.fillColor = UIColor.clear.cgColor
-                shapeLayer.name = "FaceRectLayer"
-                featureLayer = shapeLayer
-                previewLayer?.addSublayer(featureLayer!)
-            }
-            featureLayer!.path = path.cgPath
-            featureLayer!.frame = previewView.frame
-//            featureLayer!.frame = faceRect
-            
-//            switch orientation {
-//            case .portrait:
-//                featureLayer!.setAffineTransform(CGAffineTransform(rotationAngle: DegreesToRadians(0.0)))
-//            case .portraitUpsideDown:
-//                featureLayer!.setAffineTransform(CGAffineTransform(rotationAngle: DegreesToRadians(180.0)))
-//            case .landscapeLeft:
-//                featureLayer!.setAffineTransform(CGAffineTransform(rotationAngle: DegreesToRadians(90.0)))
-//            case .landscapeRight:
-//                featureLayer!.setAffineTransform(CGAffineTransform(rotationAngle: DegreesToRadians(-90.0)))
-//            case .faceUp, .faceDown:
-//                break
-//            default:
-//
-//                break // leave the layer in its last known orientation//        }
-//            }
         }
         
+        var featureLayer: CAShapeLayer? = nil
+
+        // re-use an existing layer if possible
+        for currentSublayer in sublayers
+            where currentSublayer.name == "FaceRectLayer"
+        {
+            let currentLayer = currentSublayer as! CAShapeLayer
+            featureLayer = currentLayer
+            currentLayer.isHidden = false
+            break
+        }
+        
+        // create a new one if necessary
+        if featureLayer == nil {
+            let shapeLayer = CAShapeLayer()
+            shapeLayer.strokeColor = UIColor.red.cgColor
+            shapeLayer.lineWidth = 4.0
+            shapeLayer.fillColor = UIColor.clear.cgColor
+            shapeLayer.name = "FaceRectLayer"
+            featureLayer = shapeLayer
+            previewLayer?.addSublayer(featureLayer!)
+        }
+        path.apply(denormalizing)
+        featureLayer!.path = path.cgPath
+
         CATransaction.commit()
     }
 
@@ -741,13 +684,6 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         requestPhotoLibraryAuthentication()
     }
     
-    //- (void)viewDidUnload
-    //{
-    //    [super viewDidUnload];
-    //    // Release any retained subviews of the main view.
-    //    // e.g. self.myOutlet = nil;
-    //}
-    
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
     }
@@ -764,11 +700,6 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         super.viewDidDisappear(animated)
     }
     
-    //- (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation
-    //{
-    //    // Return YES for supported orientations
-    //    return (interfaceOrientation == UIInterfaceOrientationPortrait);
-    //}
     override var supportedInterfaceOrientations : UIInterfaceOrientationMask {
         return .portrait
     }
@@ -911,20 +842,5 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
         // clean up resources used for photo capturing...
     }
-    //### This app does not capture LivePhotos.
-    //    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingLivePhotoToMovieFileAt outputFileURL: URL, duration: CMTime, photoDisplayTime: CMTime, resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
-    //        //
-    //    }
-    //    func photoOutput(_ output: AVCapturePhotoOutput, didFinishRecordingLivePhotoMovieForEventualFileAt outputFileURL: URL, resolvedSettings: AVCaptureResolvedPhotoSettings) {
-    //        //
-    //    }
-//    @available(iOS, deprecated: 11.0)
-//    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photoSampleBuffer: CMSampleBuffer?, previewPhoto previewPhotoSampleBuffer: CMSampleBuffer?, resolvedSettings: AVCaptureResolvedPhotoSettings, bracketSettings: AVCaptureBracketedStillImageSettings?, error: Error?) {
-//        //
-//    }
-    //### This app does not use raw photo.
-    //    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingRawPhoto rawSampleBuffer: CMSampleBuffer?, previewPhoto previewPhotoSampleBuffer: CMSampleBuffer?, resolvedSettings: AVCaptureResolvedPhotoSettings, bracketSettings: AVCaptureBracketedStillImageSettings?, error: Error?) {
-    //        //
-    //    }
 }
 

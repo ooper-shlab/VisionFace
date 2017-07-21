@@ -2,7 +2,7 @@
 //  AppDelegate.swift
 //  VisionFace
 //
-//  Created by 開発 on 2017/7/10.
+//  Created by OOPer in cooperation with shlab.jp, on 2017/7/10.
 //  Copyright © 2017 OOPer (NAGATA, Atsuyuki). All rights reserved.
 //
 
