@@ -73,6 +73,7 @@ extension UIImage {
 class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
     @IBOutlet private var previewView: UIView!
     @IBOutlet private var camerasControl: UISegmentedControl!
+    @IBOutlet weak var faceItem: UIBarButtonItem!
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var videoDataOutput: AVCaptureVideoDataOutput?
     private var detectFaces: Bool = false
@@ -493,15 +494,51 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             .concatenating(flipVertical)
             .concatenating(scale)
             .concatenating(translate)
+        
+        let isDetectingFaceLandmarks = faceItem.tag != 0
 
         let path = UIBezierPath()
-        for observation in observations {
-            let faceRect = observation.boundingBox
-            path.move(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y))
-            path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y))
-            path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y + faceRect.size.height))
-            path.addLine(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y + faceRect.size.height))
-            path.close()
+        if isDetectingFaceLandmarks {
+            for observation in observations {
+                let faceRect = observation.boundingBox
+                if let landmarks = observation.landmarks {
+                    for case let landmark? in [
+                        landmarks.faceContour,
+                        landmarks.innerLips,
+                        landmarks.outerLips,
+                        landmarks.leftEye,
+                        landmarks.leftPupil,
+                        landmarks.leftEyebrow,
+                        landmarks.rightEye,
+                        landmarks.rightPupil,
+                        landmarks.rightEyebrow,
+                        landmarks.nose,
+                        landmarks.noseCrest,
+                        landmarks.medianLine,
+                        ] {
+                        for i in 0..<landmark.pointCount {
+                            let point = landmark.point(at: i)
+                            let x = faceRect.origin.x + faceRect.width * CGFloat(point.x)
+                            let y = faceRect.origin.y + faceRect.height * CGFloat(point.y)
+                            let cgPoint = CGPoint(x: x, y: y)
+                            if i == 0 {
+                                path.move(to: cgPoint)
+                            } else {
+                                path.addLine(to: cgPoint)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            for observation in observations {
+                let faceRect = observation.boundingBox
+                path.move(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y))
+                path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y))
+                path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y + faceRect.size.height))
+                path.addLine(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y + faceRect.size.height))
+                path.close()
+            }
         }
         
         var featureLayer: CAShapeLayer? = nil
@@ -519,7 +556,6 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         // create a new one if necessary
         if featureLayer == nil {
             let shapeLayer = CAShapeLayer()
-            shapeLayer.strokeColor = UIColor.red.cgColor
             shapeLayer.lineWidth = 4.0
             shapeLayer.fillColor = UIColor.clear.cgColor
             shapeLayer.name = "FaceRectLayer"
@@ -527,6 +563,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             previewLayer?.addSublayer(featureLayer!)
         }
         path.apply(denormalizing)
+        featureLayer!.strokeColor = (isDetectingFaceLandmarks ? UIColor.brown : UIColor.red).cgColor
         featureLayer!.path = path.cgPath
 
         CATransaction.commit()
@@ -615,17 +652,30 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         let orientation = cgImagePropertyOrientation(from: curDeviceOrientation)
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
         
-        let request = VNDetectFaceRectanglesRequest {request, error in
-            let observations = request.results as! [VNFaceObservation]
-            
-            // get the clean aperture
-            // the clean aperture is a rectangle that defines the portion of the encoded pixel dimensions
-            // that represents image data valid for display.
-            let fdesc = CMSampleBufferGetFormatDescription(sampleBuffer)!
-            let clap = CMVideoFormatDescriptionGetCleanAperture(fdesc, false /*originIsTopLeft == false*/)
-            
-            DispatchQueue.main.async {
-                self.drawFaceBoxes(for: observations, forVideoBox: clap, orientation: curDeviceOrientation)
+        let isDetectingFaceLandmarks = faceItem.tag != 0
+        
+        // get the clean aperture
+        // the clean aperture is a rectangle that defines the portion of the encoded pixel dimensions
+        // that represents image data valid for display.
+        let fdesc = CMSampleBufferGetFormatDescription(sampleBuffer)!
+        let clap = CMVideoFormatDescriptionGetCleanAperture(fdesc, false /*originIsTopLeft == false*/)
+
+        let request: VNImageBasedRequest
+        if isDetectingFaceLandmarks {
+            request = VNDetectFaceLandmarksRequest {request, error in
+                let observations = request.results as! [VNFaceObservation]
+                
+                DispatchQueue.main.async {
+                    self.drawFaceBoxes(for: observations, forVideoBox: clap, orientation: curDeviceOrientation)
+                }
+            }
+        } else {
+            request = VNDetectFaceRectanglesRequest {request, error in
+                let observations = request.results as! [VNFaceObservation]
+                
+                DispatchQueue.main.async {
+                    self.drawFaceBoxes(for: observations, forVideoBox: clap, orientation: curDeviceOrientation)
+                }
             }
         }
         do {
@@ -664,6 +714,17 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             configInput(for: device)
         }
         isUsingFrontFacingCamera = !isUsingFrontFacingCamera
+    }
+
+    /// Switch face rectangle detection and face landmarks detection
+    @IBAction func facePressed(_ sender: UIBarButtonItem) {
+        if sender.tag == 0 {
+            sender.tag = 1
+            sender.tintColor = .brown
+        } else {
+            sender.tag = 0
+            sender.tintColor = .red
+        }
     }
     
     override func didReceiveMemoryWarning() {
@@ -791,6 +852,7 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
         if let error = error as NSError? {
             self.displayErrorOnMainQueue(error, withMessage: "Take picture failed")
         } else {
+            //### Not yet using Vision...
             let doingFaceDetection = detectFaces && (effectiveScale == 1.0)
             
             if doingFaceDetection {
