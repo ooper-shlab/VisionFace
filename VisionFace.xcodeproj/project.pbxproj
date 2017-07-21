@@ -16,8 +16,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		D7318CCA1F218BA3007026E8 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = README.md; path = ../../translated/QRCodeReader/README.md; sourceTree = "<group>"; };
-		D7318CCB1F218BA3007026E8 /* LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; name = LICENSE.txt; path = ../../translated/QRCodeReader/LICENSE.txt; sourceTree = "<group>"; };
+		D7318CCC1F2190A8007026E8 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		D7318CCD1F2190A8007026E8 /* LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE.txt; sourceTree = "<group>"; };
 		D75E6EB31F20EBFC0019815F /* squarePNG.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = squarePNG.png; path = "../../../translated/SquareCamSwift-20130404/SquareCam/squarePNG.png"; sourceTree = "<group>"; };
 		D790CE941F130FFC000D341A /* VisionFace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VisionFace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D790CE971F130FFC000D341A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -42,8 +42,8 @@
 		D790CE8B1F130FFC000D341A = {
 			isa = PBXGroup;
 			children = (
-				D7318CCB1F218BA3007026E8 /* LICENSE.txt */,
-				D7318CCA1F218BA3007026E8 /* README.md */,
+				D7318CCD1F2190A8007026E8 /* LICENSE.txt */,
+				D7318CCC1F2190A8007026E8 /* README.md */,
 				D790CE961F130FFC000D341A /* VisionFace */,
 				D790CE951F130FFC000D341A /* Products */,
 			);

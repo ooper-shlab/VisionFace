@@ -1,11 +1,13 @@
-# QRCodeReader
-A simple example of QR Code reader using AVCaptureSession.
+# VisionFace
+A simple example of face detection using Vision framework.
 
-Created by OOPer in cooperation with shlab.jp, on 2015/4/29.
+Created by OOPer in cooperation with shlab.jp, on 2017/7/21.
 
-Inspired by this article
- <http://qiita.com/hkato193/items/c36a940c2929a124e416>
-.
+The code base and the UI design is taken from the translated version of Apple's sample code: SquareCam.
+<https://developer.apple.com/library/content/samplecode/SquareCam/Introduction/Intro.html#//apple_ref/doc/uid/DTS40011190>
+
+See also:
+<https://github.com/ooper-shlab/SquareCam-Swift>.
 
 ===========================================================================
 ### BUILD REQUIREMENTS:

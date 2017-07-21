@@ -1,8 +1,5 @@
-QRCodeReader: A simple example of QR Code reader using AVCaptureSession.
+VisionFace: A simple example of face detection using Vision framework.
 Version:  1.0
-
-QRコード or QR Code is a registered trademark of DENSO WAVE INCORPORATED in Japan and in other countries.
-
 
 Copyright (c) 2015−2017, OOPer(NAGATA, Atsuyuki)
 All rights reserved.
