@@ -222,6 +222,83 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         return returnImage!
     }
     
+    // utility routine to create a new image with the brown face overlay with appropriate orientation
+    // and return the new composited image which can be saved to the camera roll
+    private func newFaceOverlayedImage(for observations: [VNFaceObservation],
+                                         inCGImage backgroundImage: CGImage,
+                                         withOrientation orientation: UIDeviceOrientation,
+                                         frontFacing isFrontFacing: Bool) -> CGImage
+    {
+        let backgroundImageRect = CGRect(x: 0, y: 0, width: backgroundImage.width, height: backgroundImage.height)
+        guard let bitmapContext = CreateCGBitmapContext(for: backgroundImageRect.size) else {
+            fatalError("Cannot create CGBitmapContext")
+        }
+        bitmapContext.clear(backgroundImageRect)
+        bitmapContext.draw(backgroundImage, in: backgroundImageRect)
+        
+        let flipVertical = CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -1)
+        let flipHorizontal = isFrontFacing
+            ? CGAffineTransform(scaleX: -1, y: 1).translatedBy(x: -1, y: 0)
+            : CGAffineTransform.identity
+        let width = CGFloat(backgroundImage.width)
+        let height = CGFloat(backgroundImage.height)
+        print(width, height)
+        var rotation = CGAffineTransform.identity
+        let scale = CGAffineTransform(scaleX: width, y: height)
+        switch orientation {
+        case .portrait:
+            rotation = CGAffineTransform(rotationAngle: -(.pi/2)).translatedBy(x: -1, y: 0)
+        case .portraitUpsideDown:
+            break
+        case .landscapeLeft:
+            break
+//            if isFrontFacing {
+//                rotationDegrees = 180.0
+//            } else {
+//                rotationDegrees = 0.0
+//            }
+        case .landscapeRight:
+            break
+//            if isFrontFacing {
+//                rotationDegrees = 0.0
+//            } else {
+//                rotationDegrees = 180.0
+//            }
+        case .faceUp, .faceDown:
+            break
+        default:
+            break // leave the layer in its last known orientation
+        }
+        let transform = flipVertical //(0.1,0.4)
+            .concatenating(flipHorizontal)
+            .concatenating(rotation) //(0.4,0.9)
+            .concatenating(scale)    //(512,864)
+        
+        // features found by the face detector
+        let isDetectingFaceLandmarks = faceItem.tag != 0
+        let path = createBezierPath(for: observations, isDetectingFaceLandmarks: isDetectingFaceLandmarks)
+        if path.isEmpty {print("!!!!!Empty!!!!!")}
+//        let path = UIBezierPath()
+//        path.move(to: CGPoint(x: 0, y: 0))
+//        path.addLine(to: CGPoint(x: 0.5, y: 0.5))
+        path.cgPath.applyWithBlock {eltPtr in
+            print(eltPtr.pointee.points[0])
+        }
+        path.apply(transform)
+        print(CGPoint(x: 0.1, y: 0.6).applying(transform))
+        path.cgPath.applyWithBlock {eltPtr in
+            print(eltPtr.pointee.points[0])
+        }
+
+        bitmapContext.addPath(path.cgPath)
+        bitmapContext.setLineWidth(4.0)
+        bitmapContext.setStrokeColor((isDetectingFaceLandmarks ? UIColor.brown : UIColor.red).cgColor)
+        bitmapContext.drawPath(using: .stroke)
+        let returnImage = bitmapContext.makeImage()!
+        
+        return returnImage
+    }
+
     // utility routine used after taking a still image to write the resulting image to the camera roll
     @discardableResult
     private func writeCGImageToCameraRoll(_ cgImage: CGImage, withMetadata metadata: [String: Any]) -> Bool {
@@ -496,7 +573,8 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             .concatenating(translate)
         
         let isDetectingFaceLandmarks = faceItem.tag != 0
-
+        let path = createBezierPath(for: observations, isDetectingFaceLandmarks: isDetectingFaceLandmarks)
+/*
         let path = UIBezierPath()
         if isDetectingFaceLandmarks {
             for observation in observations {
@@ -540,7 +618,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
                 path.close()
             }
         }
-        
+*/
         var featureLayer: CAShapeLayer? = nil
 
         // re-use an existing layer if possible
@@ -567,6 +645,52 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         featureLayer!.path = path.cgPath
 
         CATransaction.commit()
+    }
+    private func createBezierPath(for observations: [VNFaceObservation], isDetectingFaceLandmarks: Bool) -> UIBezierPath {
+        let path = UIBezierPath()
+        if isDetectingFaceLandmarks {
+            for observation in observations {
+                let faceRect = observation.boundingBox
+                if let landmarks = observation.landmarks {
+                    for case let landmark? in [
+                        landmarks.faceContour,
+                        landmarks.innerLips,
+                        landmarks.outerLips,
+                        landmarks.leftEye,
+                        landmarks.leftPupil,
+                        landmarks.leftEyebrow,
+                        landmarks.rightEye,
+                        landmarks.rightPupil,
+                        landmarks.rightEyebrow,
+                        landmarks.nose,
+                        landmarks.noseCrest,
+                        landmarks.medianLine,
+                        ] {
+                            for i in 0..<landmark.pointCount {
+                                let point = landmark.point(at: i)
+                                let x = faceRect.origin.x + faceRect.width * CGFloat(point.x)
+                                let y = faceRect.origin.y + faceRect.height * CGFloat(point.y)
+                                let cgPoint = CGPoint(x: x, y: y)
+                                if i == 0 {
+                                    path.move(to: cgPoint)
+                                } else {
+                                    path.addLine(to: cgPoint)
+                                }
+                            }
+                    }
+                }
+            }
+        } else {
+            for observation in observations {
+                let faceRect = observation.boundingBox
+                path.move(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y))
+                path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y))
+                path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y + faceRect.size.height))
+                path.addLine(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y + faceRect.size.height))
+                path.close()
+            }
+        }
+        return path
     }
 
     private func exifOrientation(from curDeviceOrientation: UIDeviceOrientation) -> Int {
@@ -852,39 +976,14 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
         if let error = error as NSError? {
             self.displayErrorOnMainQueue(error, withMessage: "Take picture failed")
         } else {
-            //### Not yet using Vision...
             let doingFaceDetection = detectFaces && (effectiveScale == 1.0)
             
             if doingFaceDetection {
-                // Got an image.
-                let pixelBuffer = photo.pixelBuffer!
-                let attachments = photo.metadata
-                let ciImage = CIImage(cvPixelBuffer: pixelBuffer, options: attachments)
-                
-                var imageOptions: [String: Any] = [:]
-                if let orientation = attachments[kCGImagePropertyOrientation as String] {
-                    imageOptions = [CIDetectorImageOrientation: orientation]
-                }
-                
-                // when processing an existing frame we want any new frames to be automatically dropped
-                // queueing this block to execute on the videoDataOutputQueue serial queue ensures this
-                // see the header doc for setSampleBufferDelegate:queue: for more information
-                self.videoDataOutputQueue!.sync {
-                    
-                    // get the array of CIFeature instances in the given image with a orientation passed in
-                    // the detection will be done based on the orientation but the coordinates in the returned features will
-                    // still be based on those of the image.
-                    let features = self.faceDetector.features(in: ciImage, options: imageOptions)
-                    guard let srcImage = photo.cgImageRepresentation()?.takeUnretainedValue() else {
-                        fatalError()
-                    }
-                    
-                    let curDeviceOrientation = UIDevice.current.orientation
-                    let cgImageResult = self.newSquareOverlayedImage(for: features, inCGImage: srcImage, withOrientation: curDeviceOrientation, frontFacing: self.isUsingFrontFacingCamera)
-                    let attachments = photo.metadata
-                    self.writeCGImageToCameraRoll(cgImageResult, withMetadata: attachments)
-                    
-                }
+                #if USES_CIDETECTOR
+                    drawFaceWithCIDetector(on: photo)
+                #else
+                    drawFaceWithVision(on: photo)
+                #endif
                 
             } else {
                 // trivial simple JPEG case
@@ -903,6 +1002,76 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
     }
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
         // clean up resources used for photo capturing...
+    }
+    private func drawFaceWithCIDetector(on photo: AVCapturePhoto) {
+        // Got an image.
+        let pixelBuffer = photo.pixelBuffer!
+        let attachments = photo.metadata
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer, options: attachments)
+        
+        var imageOptions: [String: Any] = [:]
+        if let orientation = attachments[kCGImagePropertyOrientation as String] {
+            imageOptions = [CIDetectorImageOrientation: orientation]
+        }
+        
+        // when processing an existing frame we want any new frames to be automatically dropped
+        // queueing this block to execute on the videoDataOutputQueue serial queue ensures this
+        // see the header doc for setSampleBufferDelegate:queue: for more information
+        self.videoDataOutputQueue!.sync {
+            
+            // get the array of CIFeature instances in the given image with a orientation passed in
+            // the detection will be done based on the orientation but the coordinates in the returned features will
+            // still be based on those of the image.
+            let features = self.faceDetector.features(in: ciImage, options: imageOptions)
+            guard let srcImage = photo.cgImageRepresentation()?.takeUnretainedValue() else {
+                fatalError()
+            }
+            
+            let curDeviceOrientation = UIDevice.current.orientation
+            let cgImageResult = self.newSquareOverlayedImage(for: features, inCGImage: srcImage, withOrientation: curDeviceOrientation, frontFacing: self.isUsingFrontFacingCamera)
+            let attachments = photo.metadata
+            self.writeCGImageToCameraRoll(cgImageResult, withMetadata: attachments)
+            
+        }
+    }
+    private func drawFaceWithVision(on photo: AVCapturePhoto) {
+        // Got an image.
+        let attachments = photo.metadata
+
+        let orientation = (attachments[kCGImagePropertyOrientation as String] as? UInt32).flatMap(CGImagePropertyOrientation.init) ?? CGImagePropertyOrientation.up
+        
+        // when processing an existing frame we want any new frames to be automatically dropped
+        // queueing this block to execute on the videoDataOutputQueue serial queue ensures this
+        // see the header doc for setSampleBufferDelegate:queue: for more information
+        self.videoDataOutputQueue!.sync {
+            
+            // get the array of CIFeature instances in the given image with a orientation passed in
+            // the detection will be done based on the orientation but the coordinates in the returned features will
+            // still be based on those of the image.
+            guard let srcImage = photo.cgImageRepresentation()?.takeUnretainedValue() else {
+                fatalError()
+            }
+            let options: [VNImageOption: Any] = [:]
+            let handler = VNImageRequestHandler(cgImage: srcImage, orientation: orientation, options: options)
+            let isDetectingFaceLandmarks = faceItem.tag != 0
+            let curDeviceOrientation = UIDevice.current.orientation
+            let request = isDetectingFaceLandmarks
+                ? VNDetectFaceLandmarksRequest {request, error in
+                    let observations = request.results as! [VNFaceObservation]
+                    let cgImageResult = self.newFaceOverlayedImage(for: observations, inCGImage: srcImage, withOrientation: curDeviceOrientation, frontFacing: self.isUsingFrontFacingCamera)
+                    self.writeCGImageToCameraRoll(cgImageResult, withMetadata: attachments)
+                    }
+                : VNDetectFaceRectanglesRequest {request, error in
+                    let observations = request.results as! [VNFaceObservation]
+                    let cgImageResult = self.newFaceOverlayedImage(for: observations, inCGImage: srcImage, withOrientation: curDeviceOrientation, frontFacing: self.isUsingFrontFacingCamera)
+                    self.writeCGImageToCameraRoll(cgImageResult, withMetadata: attachments)
+                    }
+            do {
+                try handler.perform([request])
+            } catch let error as NSError {
+                self.displayErrorOnMainQueue(error, withMessage: "Failed to perform request")
+            }
+        }
     }
 }
 
