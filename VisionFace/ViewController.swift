@@ -241,9 +241,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         bitmapContext.draw(backgroundImage, in: backgroundImageRect)
         
         let flipVertical = CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -1)
-        let flipHorizontal = isFrontFacing
-            ? CGAffineTransform(scaleX: -1, y: 1).translatedBy(x: -1, y: 0)
-            : CGAffineTransform.identity
+        let flipHorizontal = CGAffineTransform(scaleX: -1, y: 1).translatedBy(x: -1, y: 0)
         let width = CGFloat(backgroundImage.width)
         let height = CGFloat(backgroundImage.height)
         var rotation = CGAffineTransform.identity
@@ -255,27 +253,17 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             break
         case .landscapeLeft:
             break
-//            if isFrontFacing {
-//                rotationDegrees = 180.0
-//            } else {
-//                rotationDegrees = 0.0
-//            }
         case .landscapeRight:
             break
-//            if isFrontFacing {
-//                rotationDegrees = 0.0
-//            } else {
-//                rotationDegrees = 180.0
-//            }
         case .faceUp, .faceDown:
             break
         default:
             break // leave the layer in its last known orientation
         }
-        let transform = flipVertical //(0.1,0.4)
+        let transform = flipVertical
             .concatenating(flipHorizontal)
-            .concatenating(rotation) //(0.4,0.9)
-            .concatenating(scale)    //(512,864)
+            .concatenating(rotation)
+            .concatenating(scale)
         
         // features found by the face detector
         let isDetectingFaceLandmarks = faceItem.tag != 0
