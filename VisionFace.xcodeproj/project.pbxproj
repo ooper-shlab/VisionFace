@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		D75E6EB41F20ECE30019815F /* squarePNG.png in Resources */ = {isa = PBXBuildFile; fileRef = D75E6EB31F20EBFC0019815F /* squarePNG.png */; };
+		D77A2EE71F27A95500AF8542 /* squarePNG.png in Resources */ = {isa = PBXBuildFile; fileRef = D77A2EE61F27A95500AF8542 /* squarePNG.png */; };
 		D790CE981F130FFC000D341A /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D790CE971F130FFC000D341A /* AppDelegate.swift */; };
 		D790CE9A1F130FFC000D341A /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D790CE991F130FFC000D341A /* ViewController.swift */; };
 		D790CE9D1F130FFC000D341A /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = D790CE9B1F130FFC000D341A /* Main.storyboard */; };
@@ -18,7 +18,7 @@
 /* Begin PBXFileReference section */
 		D7318CCC1F2190A8007026E8 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		D7318CCD1F2190A8007026E8 /* LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE.txt; sourceTree = "<group>"; };
-		D75E6EB31F20EBFC0019815F /* squarePNG.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = squarePNG.png; path = "../../../translated/SquareCamSwift-20130404/SquareCam/squarePNG.png"; sourceTree = "<group>"; };
+		D77A2EE61F27A95500AF8542 /* squarePNG.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = squarePNG.png; sourceTree = "<group>"; };
 		D790CE941F130FFC000D341A /* VisionFace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VisionFace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D790CE971F130FFC000D341A /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		D790CE991F130FFC000D341A /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -66,7 +66,7 @@
 				D790CE9E1F130FFC000D341A /* Assets.xcassets */,
 				D790CEA01F130FFC000D341A /* LaunchScreen.storyboard */,
 				D790CEA31F130FFC000D341A /* Info.plist */,
-				D75E6EB31F20EBFC0019815F /* squarePNG.png */,
+				D77A2EE61F27A95500AF8542 /* squarePNG.png */,
 			);
 			path = VisionFace;
 			sourceTree = "<group>";
@@ -131,7 +131,7 @@
 			files = (
 				D790CEA21F130FFC000D341A /* LaunchScreen.storyboard in Resources */,
 				D790CE9F1F130FFC000D341A /* Assets.xcassets in Resources */,
-				D75E6EB41F20ECE30019815F /* squarePNG.png in Resources */,
+				D77A2EE71F27A95500AF8542 /* squarePNG.png in Resources */,
 				D790CE9D1F130FFC000D341A /* Main.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

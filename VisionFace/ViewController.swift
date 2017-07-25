@@ -86,6 +86,10 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
     private var beginGestureScale: CGFloat = 0.0
     private var effectiveScale: CGFloat = 0.0
     
+    //### Seems videoDataOutputQueue becomes too busy to accept direct sync/async tasks when using Vision.
+    //### Make some room while capturing a still photo.
+    /*volatile*/ var isSavingPhoto: Bool = false
+    
     required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
     }
@@ -242,7 +246,6 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             : CGAffineTransform.identity
         let width = CGFloat(backgroundImage.width)
         let height = CGFloat(backgroundImage.height)
-        print(width, height)
         var rotation = CGAffineTransform.identity
         let scale = CGAffineTransform(scaleX: width, y: height)
         switch orientation {
@@ -277,18 +280,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         // features found by the face detector
         let isDetectingFaceLandmarks = faceItem.tag != 0
         let path = createBezierPath(for: observations, isDetectingFaceLandmarks: isDetectingFaceLandmarks)
-        if path.isEmpty {print("!!!!!Empty!!!!!")}
-//        let path = UIBezierPath()
-//        path.move(to: CGPoint(x: 0, y: 0))
-//        path.addLine(to: CGPoint(x: 0.5, y: 0.5))
-        path.cgPath.applyWithBlock {eltPtr in
-            print(eltPtr.pointee.points[0])
-        }
         path.apply(transform)
-        print(CGPoint(x: 0.1, y: 0.6).applying(transform))
-        path.cgPath.applyWithBlock {eltPtr in
-            print(eltPtr.pointee.points[0])
-        }
 
         bitmapContext.addPath(path.cgPath)
         bitmapContext.setLineWidth(4.0)
@@ -574,51 +566,6 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         
         let isDetectingFaceLandmarks = faceItem.tag != 0
         let path = createBezierPath(for: observations, isDetectingFaceLandmarks: isDetectingFaceLandmarks)
-/*
-        let path = UIBezierPath()
-        if isDetectingFaceLandmarks {
-            for observation in observations {
-                let faceRect = observation.boundingBox
-                if let landmarks = observation.landmarks {
-                    for case let landmark? in [
-                        landmarks.faceContour,
-                        landmarks.innerLips,
-                        landmarks.outerLips,
-                        landmarks.leftEye,
-                        landmarks.leftPupil,
-                        landmarks.leftEyebrow,
-                        landmarks.rightEye,
-                        landmarks.rightPupil,
-                        landmarks.rightEyebrow,
-                        landmarks.nose,
-                        landmarks.noseCrest,
-                        landmarks.medianLine,
-                        ] {
-                        for i in 0..<landmark.pointCount {
-                            let point = landmark.point(at: i)
-                            let x = faceRect.origin.x + faceRect.width * CGFloat(point.x)
-                            let y = faceRect.origin.y + faceRect.height * CGFloat(point.y)
-                            let cgPoint = CGPoint(x: x, y: y)
-                            if i == 0 {
-                                path.move(to: cgPoint)
-                            } else {
-                                path.addLine(to: cgPoint)
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            for observation in observations {
-                let faceRect = observation.boundingBox
-                path.move(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y))
-                path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y))
-                path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y + faceRect.size.height))
-                path.addLine(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y + faceRect.size.height))
-                path.close()
-            }
-        }
-*/
         var featureLayer: CAShapeLayer? = nil
 
         // re-use an existing layer if possible
@@ -652,41 +599,44 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             for observation in observations {
                 let faceRect = observation.boundingBox
                 if let landmarks = observation.landmarks {
-                    for case let landmark? in [
-                        landmarks.faceContour,
-                        landmarks.innerLips,
-                        landmarks.outerLips,
-                        landmarks.leftEye,
-                        landmarks.leftPupil,
-                        landmarks.leftEyebrow,
-                        landmarks.rightEye,
-                        landmarks.rightPupil,
-                        landmarks.rightEyebrow,
-                        landmarks.nose,
-                        landmarks.noseCrest,
-                        landmarks.medianLine,
-                        ] {
-                            for i in 0..<landmark.pointCount {
-                                let point = landmark.point(at: i)
-                                let x = faceRect.origin.x + faceRect.width * CGFloat(point.x)
-                                let y = faceRect.origin.y + faceRect.height * CGFloat(point.y)
-                                let cgPoint = CGPoint(x: x, y: y)
-                                if i == 0 {
-                                    path.move(to: cgPoint)
-                                } else {
-                                    path.addLine(to: cgPoint)
-                                }
+                    let landmarkDefs: [(VNFaceLandmarkRegion2D?, Bool)] = [
+                        (landmarks.faceContour, false),
+                        (landmarks.innerLips, true),
+                        (landmarks.outerLips, true),
+                        (landmarks.leftEye, true),
+                        (landmarks.leftPupil, false),
+                        (landmarks.leftEyebrow, false),
+                        (landmarks.rightEye, true),
+                        (landmarks.rightPupil, false),
+                        (landmarks.rightEyebrow, false),
+                        (landmarks.nose, false),
+                        (landmarks.noseCrest, false),
+                        (landmarks.medianLine, false),
+                    ]
+                    for case let (landmark?, closes) in landmarkDefs
+                    {
+                        for i in 0..<landmark.pointCount {
+                            let point = landmark.point(at: i)
+                            let x = faceRect.origin.x + faceRect.width * CGFloat(point.x)
+                            let y = faceRect.origin.y + faceRect.height * CGFloat(point.y)
+                            let cgPoint = CGPoint(x: x, y: y)
+                            if i == 0 {
+                                path.move(to: cgPoint)
+                            } else {
+                                path.addLine(to: cgPoint)
                             }
+                        }
+                        if closes {path.close()}
                     }
                 }
             }
         } else {
             for observation in observations {
                 let faceRect = observation.boundingBox
-                path.move(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y))
-                path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y))
-                path.addLine(to: CGPoint(x: faceRect.origin.x + faceRect.size.width, y: faceRect.origin.y + faceRect.size.height))
-                path.addLine(to: CGPoint(x: faceRect.origin.x, y: faceRect.origin.y + faceRect.size.height))
+                path.move(to: CGPoint(x: faceRect.minX, y: faceRect.minY))
+                path.addLine(to: CGPoint(x: faceRect.maxX, y: faceRect.minY))
+                path.addLine(to: CGPoint(x: faceRect.maxX, y: faceRect.maxY))
+                path.addLine(to: CGPoint(x: faceRect.minX, y: faceRect.maxY))
                 path.close()
             }
         }
@@ -741,6 +691,8 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
     }
     
     func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        if isSavingPhoto {return} //### Make some room in the videoDataOutputQueue.
+        
         #if USES_CIDETECTOR
             detectFacesWithCIDetector(for: captureOutput, sampleBuffer: sampleBuffer, from: connection)
         #else
@@ -784,24 +736,16 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         let fdesc = CMSampleBufferGetFormatDescription(sampleBuffer)!
         let clap = CMVideoFormatDescriptionGetCleanAperture(fdesc, false /*originIsTopLeft == false*/)
 
-        let request: VNImageBasedRequest
-        if isDetectingFaceLandmarks {
-            request = VNDetectFaceLandmarksRequest {request, error in
-                let observations = request.results as! [VNFaceObservation]
-                
-                DispatchQueue.main.async {
-                    self.drawFaceBoxes(for: observations, forVideoBox: clap, orientation: curDeviceOrientation)
-                }
-            }
-        } else {
-            request = VNDetectFaceRectanglesRequest {request, error in
-                let observations = request.results as! [VNFaceObservation]
-                
-                DispatchQueue.main.async {
-                    self.drawFaceBoxes(for: observations, forVideoBox: clap, orientation: curDeviceOrientation)
-                }
+        let completion: VNRequestCompletionHandler = {request, error in
+            let observations = request.results as! [VNFaceObservation]
+            
+            DispatchQueue.main.async {
+                self.drawFaceBoxes(for: observations, forVideoBox: clap, orientation: curDeviceOrientation)
             }
         }
+        let request = isDetectingFaceLandmarks
+            ? VNDetectFaceLandmarksRequest(completionHandler: completion)
+            : VNDetectFaceRectanglesRequest(completionHandler: completion)
         do {
             try handler.perform([request])
         } catch {
@@ -834,7 +778,11 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             previewLayer?.session?.addInput(input!)
             previewLayer?.session?.commitConfiguration()
         }
-        if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: desiredPosition) {
+        //### Cannot find Swift version of `defaultDeviceWithDeviceType:mediaType:position:`.
+        //### Bug of SDK 11 beta 4? Or renamed to something else?
+        //### Maybe a temporary regression in beta 4, so wait till fixed using hidden version.
+        if let device = AVCaptureDevice.__defaultDevice(withDeviceType: .builtInWideAngleCamera, mediaType: .video, position: desiredPosition) {
+//        if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: desiredPosition) {
             configInput(for: device)
         }
         isUsingFrontFacingCamera = !isUsingFrontFacingCamera
@@ -950,26 +898,33 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
 
 @available(iOS 10.0, *)
 extension ViewController: AVCapturePhotoCaptureDelegate {
+    //AVCapturePhotoOutput invokes the AVCapturePhotoCaptureDelegate callbacks on a common dispatch queue — not necessarily the main queue.
+    //### The description above says callbacks MAY be invoked on the main queue.
+    
     func photoOutput(_ output: AVCapturePhotoOutput, willCapturePhotoFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
-        // do flash bulb like animation
-        flashView = UIView(frame: previewView!.frame)
-        flashView!.backgroundColor = .white
-        flashView!.alpha = 0.0
-        self.view.window?.addSubview(flashView!)
-        
-        UIView.animate(withDuration: 0.4, animations: {
-            self.flashView?.alpha = 1.0
-        })
+        DispatchQueue.main.async {
+            // do flash bulb like animation
+            self.flashView = UIView(frame: self.previewView!.frame)
+            self.flashView!.backgroundColor = .white
+            self.flashView!.alpha = 0.0
+            self.view.window?.addSubview(self.flashView!)
+            
+            UIView.animate(withDuration: 0.4, animations: {
+                self.flashView?.alpha = 1.0
+            })
+        }
     }
     func photoOutput(_ output: AVCapturePhotoOutput, didCapturePhotoFor resolvedSettings: AVCaptureResolvedPhotoSettings) {
-        UIView.animate(withDuration: 0.4,
-                       animations: {
-                        self.flashView?.alpha = 0.0
-        },
-                       completion: {finished in
-                        self.flashView?.removeFromSuperview()
-                        self.flashView = nil;
-        })
+        DispatchQueue.main.async {
+            UIView.animate(withDuration: 0.4,
+                           animations: {
+                            self.flashView?.alpha = 0.0
+            },
+                           completion: {finished in
+                            self.flashView?.removeFromSuperview()
+                            self.flashView = nil;
+            })
+        }
     }
     @available(iOS 11.0, *)
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
@@ -979,12 +934,13 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
             let doingFaceDetection = detectFaces && (effectiveScale == 1.0)
             
             if doingFaceDetection {
+                isSavingPhoto = true
                 #if USES_CIDETECTOR
                     drawFaceWithCIDetector(on: photo)
                 #else
                     drawFaceWithVision(on: photo)
                 #endif
-                
+                isSavingPhoto = false
             } else {
                 // trivial simple JPEG case
                 let jpegData = photo.fileDataRepresentation()
@@ -1040,38 +996,38 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
 
         let orientation = (attachments[kCGImagePropertyOrientation as String] as? UInt32).flatMap(CGImagePropertyOrientation.init) ?? CGImagePropertyOrientation.up
         
+        guard let srcImage = photo.cgImageRepresentation()?.takeUnretainedValue() else {
+            fatalError()
+        }
+        let options: [VNImageOption: Any] = [:]
+        
         // when processing an existing frame we want any new frames to be automatically dropped
         // queueing this block to execute on the videoDataOutputQueue serial queue ensures this
         // see the header doc for setSampleBufferDelegate:queue: for more information
+        //### As this method may be called in the main thread, `sync` may cause deadlock.
         self.videoDataOutputQueue!.sync {
-            
-            // get the array of CIFeature instances in the given image with a orientation passed in
-            // the detection will be done based on the orientation but the coordinates in the returned features will
-            // still be based on those of the image.
-            guard let srcImage = photo.cgImageRepresentation()?.takeUnretainedValue() else {
-                fatalError()
-            }
-            let options: [VNImageOption: Any] = [:]
             let handler = VNImageRequestHandler(cgImage: srcImage, orientation: orientation, options: options)
-            let isDetectingFaceLandmarks = faceItem.tag != 0
+            let isDetectingFaceLandmarks = self.faceItem.tag != 0
             let curDeviceOrientation = UIDevice.current.orientation
+            //The thread of execution in which this block is invoked is internal to the Vision framework and should not be relied upon by the client.
+            //### The description above does not mean VNImageRequestHandler's perform(_:) method runs asynchronously. The method finishes after all completion handlers have finished.
+            let completion: VNRequestCompletionHandler = {request, error in
+                let observations = request.results as! [VNFaceObservation]
+                let cgImageResult = self.newFaceOverlayedImage(for: observations, inCGImage: srcImage, withOrientation: curDeviceOrientation, frontFacing: self.isUsingFrontFacingCamera)
+                self.writeCGImageToCameraRoll(cgImageResult, withMetadata: attachments)
+            }
             let request = isDetectingFaceLandmarks
-                ? VNDetectFaceLandmarksRequest {request, error in
-                    let observations = request.results as! [VNFaceObservation]
-                    let cgImageResult = self.newFaceOverlayedImage(for: observations, inCGImage: srcImage, withOrientation: curDeviceOrientation, frontFacing: self.isUsingFrontFacingCamera)
-                    self.writeCGImageToCameraRoll(cgImageResult, withMetadata: attachments)
-                    }
-                : VNDetectFaceRectanglesRequest {request, error in
-                    let observations = request.results as! [VNFaceObservation]
-                    let cgImageResult = self.newFaceOverlayedImage(for: observations, inCGImage: srcImage, withOrientation: curDeviceOrientation, frontFacing: self.isUsingFrontFacingCamera)
-                    self.writeCGImageToCameraRoll(cgImageResult, withMetadata: attachments)
-                    }
+                ? VNDetectFaceLandmarksRequest(completionHandler: completion)
+                : VNDetectFaceRectanglesRequest(completionHandler: completion)
             do {
+                //The function returns once all requests have been finished.
+                //### The description above seems to include all completion handlers of the requests.
                 try handler.perform([request])
             } catch let error as NSError {
                 self.displayErrorOnMainQueue(error, withMessage: "Failed to perform request")
             }
         }
+        
     }
 }
 
