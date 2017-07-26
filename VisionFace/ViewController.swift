@@ -230,8 +230,8 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
     // and return the new composited image which can be saved to the camera roll
     private func newFaceOverlayedImage(for observations: [VNFaceObservation],
                                          inCGImage backgroundImage: CGImage,
-                                         withOrientation orientation: UIDeviceOrientation,
-                                         frontFacing isFrontFacing: Bool) -> CGImage
+                                         withOrientation orientation: CGImagePropertyOrientation
+        ) -> CGImage
     {
         let backgroundImageRect = CGRect(x: 0, y: 0, width: backgroundImage.width, height: backgroundImage.height)
         guard let bitmapContext = CreateCGBitmapContext(for: backgroundImageRect.size) else {
@@ -241,24 +241,31 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         bitmapContext.draw(backgroundImage, in: backgroundImageRect)
         
         let flipVertical = CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -1)
-        let flipHorizontal = CGAffineTransform(scaleX: -1, y: 1).translatedBy(x: -1, y: 0)
+        var flipHorizontal = CGAffineTransform(scaleX: -1, y: 1).translatedBy(x: -1, y: 0)
         let width = CGFloat(backgroundImage.width)
         let height = CGFloat(backgroundImage.height)
         var rotation = CGAffineTransform.identity
         let scale = CGAffineTransform(scaleX: width, y: height)
         switch orientation {
-        case .portrait:
+        case .up:
+            break
+        case .upMirrored:
+            flipHorizontal = CGAffineTransform.identity
+        case .left:
+            rotation = CGAffineTransform(rotationAngle: .pi/2).translatedBy(x: 0, y: -1)
+        case .leftMirrored:
+            rotation = CGAffineTransform(rotationAngle: .pi/2).translatedBy(x: 0, y: -1)
+            flipHorizontal = CGAffineTransform.identity
+        case .right:
             rotation = CGAffineTransform(rotationAngle: -(.pi/2)).translatedBy(x: -1, y: 0)
-        case .portraitUpsideDown:
-            break
-        case .landscapeLeft:
-            break
-        case .landscapeRight:
-            break
-        case .faceUp, .faceDown:
-            break
-        default:
-            break // leave the layer in its last known orientation
+        case .rightMirrored:
+            rotation = CGAffineTransform(rotationAngle: -(.pi/2)).translatedBy(x: -1, y: 0)
+            flipHorizontal = CGAffineTransform.identity
+        case .down:
+            rotation = CGAffineTransform(scaleX: -1, y: -1).translatedBy(x: -1, y: -1)
+        case .downMirrored:
+            rotation = CGAffineTransform(scaleX: -1, y: -1).translatedBy(x: -1, y: -1)
+            flipHorizontal = CGAffineTransform.identity
         }
         let transform = flipVertical
             .concatenating(flipHorizontal)
@@ -996,12 +1003,12 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
         self.videoDataOutputQueue!.sync {
             let handler = VNImageRequestHandler(cgImage: srcImage, orientation: orientation, options: options)
             let isDetectingFaceLandmarks = self.faceItem.tag != 0
-            let curDeviceOrientation = UIDevice.current.orientation
+            //let curDeviceOrientation = UIDevice.current.orientation
             //The thread of execution in which this block is invoked is internal to the Vision framework and should not be relied upon by the client.
             //### The description above does not mean VNImageRequestHandler's perform(_:) method runs asynchronously. The method finishes after all completion handlers have finished.
             let completion: VNRequestCompletionHandler = {request, error in
                 let observations = request.results as! [VNFaceObservation]
-                let cgImageResult = self.newFaceOverlayedImage(for: observations, inCGImage: srcImage, withOrientation: curDeviceOrientation, frontFacing: self.isUsingFrontFacingCamera)
+                let cgImageResult = self.newFaceOverlayedImage(for: observations, inCGImage: srcImage, withOrientation: orientation/*, frontFacing: self.isUsingFrontFacingCamera*/)
                 self.writeCGImageToCameraRoll(cgImageResult, withMetadata: attachments)
             }
             let request = isDetectingFaceLandmarks
