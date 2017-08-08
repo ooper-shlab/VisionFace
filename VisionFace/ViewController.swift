@@ -608,10 +608,14 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
                         (landmarks.noseCrest, false),
                         (landmarks.medianLine, false),
                     ]
-                    for case let (landmark?, closes) in landmarkDefs
-                    {
+                    for case let (landmark?, closes) in landmarkDefs {
                         for i in 0..<landmark.pointCount {
-                            let point = landmark.point(at: i)
+                            //### Xcode 9 beta 5 shows deprecated warning for `point(at:)`,
+                            //### Swift-ized versions of `__normalizedPoints` or `__pointsInImage`
+                            //### would be the preferred property in the future SDK.
+                            //### Maybe `normalizedPoint(at:)` and `point(in:at:)` would be provided.
+                            //### In iOS 11 betas prior to beta 5, `__normalizedPoints` does not work.
+                            let point = landmark.__normalizedPoints[i]
                             let x = faceRect.origin.x + faceRect.width * CGFloat(point.x)
                             let y = faceRect.origin.y + faceRect.height * CGFloat(point.y)
                             let cgPoint = CGPoint(x: x, y: y)
@@ -773,11 +777,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             previewLayer?.session?.addInput(input!)
             previewLayer?.session?.commitConfiguration()
         }
-        //### Cannot find Swift version of `defaultDeviceWithDeviceType:mediaType:position:`.
-        //### Bug of SDK 11 beta 4? Or renamed to something else?
-        //### Maybe a temporary regression in beta 4, so wait till fixed using hidden version.
-        if let device = AVCaptureDevice.__defaultDevice(withDeviceType: .builtInWideAngleCamera, mediaType: .video, position: desiredPosition) {
-//        if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: desiredPosition) {
+        if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: desiredPosition) {
             configInput(for: device)
         }
         isUsingFrontFacingCamera = !isUsingFrontFacingCamera
