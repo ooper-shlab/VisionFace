@@ -291,8 +291,8 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
     private func writeCGImageToCameraRoll(_ cgImage: CGImage, withMetadata metadata: [String: Any]) -> Bool {
         var success = true
         bail: do {
-            let destinationData = CFDataCreateMutable(kCFAllocatorDefault, 0)
-            guard let destination = CGImageDestinationCreateWithData(destinationData!,
+            let destinationData = CFDataCreateMutable(kCFAllocatorDefault, 0)!
+            guard let destination = CGImageDestinationCreateWithData(destinationData,
                                                                      "public.jpeg" as CFString,
                                                                      1,
                                                                      nil)
@@ -313,7 +313,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             
             PHPhotoLibrary.shared().performChanges({
                 let request = PHAssetCreationRequest.forAsset()
-                request.addResource(with: .photo, data: destinationData as Data!, options: nil)
+                request.addResource(with: .photo, data: destinationData as Data, options: nil)
                 request.creationDate = Date()
             }) {success, error in
                 if let error = error as NSError? {
@@ -701,8 +701,8 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
     private func detectFacesWithCIDetector(for captureOutput: AVCaptureOutput, sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         // got an image
         let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)!
-        let attachments = CMCopyDictionaryOfAttachments(kCFAllocatorDefault, sampleBuffer, kCMAttachmentMode_ShouldPropagate) as! [String: Any]?
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer, options: attachments)
+        let attachments = CMCopyDictionaryOfAttachments(allocator: kCFAllocatorDefault, target: sampleBuffer, attachmentMode: kCMAttachmentMode_ShouldPropagate) as! [String: Any]?
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer, options: convertToOptionalCIImageOptionDictionary(attachments))
         
         let curDeviceOrientation = UIDevice.current.orientation
         let exifOrientation = self.exifOrientation(from: curDeviceOrientation)
@@ -714,7 +714,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         // the clean aperture is a rectangle that defines the portion of the encoded pixel dimensions
         // that represents image data valid for display.
         let fdesc = CMSampleBufferGetFormatDescription(sampleBuffer)!
-        let clap = CMVideoFormatDescriptionGetCleanAperture(fdesc, false /*originIsTopLeft == false*/)
+        let clap = CMVideoFormatDescriptionGetCleanAperture(fdesc, originIsAtTopLeft: false /*originIsTopLeft == false*/)
         
         DispatchQueue.main.async {
             self.drawFaceBoxes(for: features, forVideoBox: clap, orientation: curDeviceOrientation)
@@ -733,7 +733,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
         // the clean aperture is a rectangle that defines the portion of the encoded pixel dimensions
         // that represents image data valid for display.
         let fdesc = CMSampleBufferGetFormatDescription(sampleBuffer)!
-        let clap = CMVideoFormatDescriptionGetCleanAperture(fdesc, false /*originIsTopLeft == false*/)
+        let clap = CMVideoFormatDescriptionGetCleanAperture(fdesc, originIsAtTopLeft: false /*originIsTopLeft == false*/)
 
         let completion: VNRequestCompletionHandler = {request, error in
             let observations = request.results as! [VNFaceObservation]
@@ -771,7 +771,7 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
             do {
                 input = try AVCaptureDeviceInput(device: device)
             } catch {}
-            for oldInput in previewLayer?.session?.inputs as [AVCaptureInput]! ?? [] {
+            for oldInput in previewLayer?.session?.inputs ?? [] {
                 previewLayer?.session?.removeInput(oldInput)
             }
             previewLayer?.session?.addInput(input!)
@@ -787,9 +787,11 @@ class ViewController: UIViewController, UIGestureRecognizerDelegate, AVCaptureVi
     @IBAction func facePressed(_ sender: UIBarButtonItem) {
         if sender.tag == 0 {
             sender.tag = 1
+            sender.title = "Face Landmarks"
             sender.tintColor = .brown
         } else {
             sender.tag = 0
+            sender.title = "Faces"
             sender.tintColor = .red
         }
     }
@@ -958,7 +960,7 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
         // Got an image.
         let pixelBuffer = photo.pixelBuffer!
         let attachments = photo.metadata
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer, options: attachments)
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer, options: convertToOptionalCIImageOptionDictionary(attachments))
         
         var imageOptions: [String: Any] = [:]
         if let orientation = attachments[kCGImagePropertyOrientation as String] {
@@ -974,7 +976,7 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
             // the detection will be done based on the orientation but the coordinates in the returned features will
             // still be based on those of the image.
             let features = self.faceDetector.features(in: ciImage, options: imageOptions)
-            guard let srcImage = photo.cgImageRepresentation()?.takeUnretainedValue() else {
+            guard let srcImage = photo.cgImageRepresentation() else {
                 fatalError()
             }
             
@@ -991,7 +993,7 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
 
         let orientation = (attachments[kCGImagePropertyOrientation as String] as? UInt32).flatMap(CGImagePropertyOrientation.init) ?? CGImagePropertyOrientation.up
         
-        guard let srcImage = photo.cgImageRepresentation()?.takeUnretainedValue() else {
+        guard let srcImage = photo.cgImageRepresentation() else {
             fatalError()
         }
         let options: [VNImageOption: Any] = [:]
@@ -1026,3 +1028,9 @@ extension ViewController: AVCapturePhotoCaptureDelegate {
     }
 }
 
+
+// Helper function inserted by Swift 4.2 migrator.
+fileprivate func convertToOptionalCIImageOptionDictionary(_ input: [String: Any]?) -> [CIImageOption: Any]? {
+	guard let input = input else { return nil }
+	return Dictionary(uniqueKeysWithValues: input.map { key, value in (CIImageOption(rawValue: key), value)})
+}
